@@ -724,9 +724,22 @@ Parser.prototype = {
       ensureSafeFunction(fn, expressionText);
 
       // IE doesn't have apply for some native functions
-      var v = fn.apply
-            ? fn.apply(context, args)
-            : fn(args[0], args[1], args[2], args[3], args[4]);
+      var v;
+      if (fn.apply) {
+        v = fn.apply(context, args);
+      } else if(args && args.length) {
+        var tempArgs = args;
+        var i = args.length;
+        while(i++ < 5){
+          tempArgs.push(undefined);
+        }
+        v = fn(tempArgs[0], tempArgs[1], tempArgs[2], tempArgs[3], tempArgs[4]);
+
+        // Free-up the memory.
+        tempArgs.length = 0;
+      }else{
+        v = fn();
+      }
 
       if (args) {
         // Free-up the memory (arguments of the last function call).
