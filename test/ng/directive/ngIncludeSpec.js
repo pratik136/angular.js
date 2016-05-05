@@ -111,7 +111,7 @@ describe('ngInclude', function() {
 
   it('should fire $includeContentRequested event on scope after making the xhr call', inject(
       function($rootScope, $compile, $httpBackend) {
-    var contentRequestedSpy = jasmine.createSpy('content requested').andCallFake(function(event) {
+    var contentRequestedSpy = jasmine.createSpy('content requested').and.callFake(function(event) {
       expect(event.targetScope).toBe($rootScope);
     });
 
@@ -128,7 +128,7 @@ describe('ngInclude', function() {
 
   it('should fire $includeContentLoaded event on child scope after linking the content', inject(
       function($rootScope, $compile, $templateCache) {
-    var contentLoadedSpy = jasmine.createSpy('content loaded').andCallFake(function(event) {
+    var contentLoadedSpy = jasmine.createSpy('content loaded').and.callFake(function(event) {
       expect(event.targetScope.$parent).toBe($rootScope);
       expect(element.text()).toBe('partial content');
     });
@@ -354,11 +354,7 @@ describe('ngInclude', function() {
 
     expect(window._ngIncludeCausesScriptToRun).toBe(true);
 
-    // IE8 doesn't like deleting properties of window
-    window._ngIncludeCausesScriptToRun = undefined;
-    try {
-      delete window._ngIncludeCausesScriptToRun;
-    } catch (e) {}
+    delete window._ngIncludeCausesScriptToRun;
   }));
 
 
@@ -402,6 +398,28 @@ describe('ngInclude', function() {
   });
 
 
+  it('should not compile template if original scope is destroyed', function() {
+    module(function($provide) {
+      $provide.decorator('$compile', function($delegate) {
+        var result = jasmine.createSpy('$compile').and.callFake($delegate);
+        result.$$createComment = $delegate.$$createComment;
+        return result;
+      });
+    });
+    inject(function($rootScope, $httpBackend, $compile) {
+      $httpBackend.when('GET', 'url').respond('template text');
+      $rootScope.show = true;
+      element = $compile('<div ng-if="show"><div ng-include="\'url\'"></div></div>')($rootScope);
+      $rootScope.$digest();
+      $rootScope.show = false;
+      $rootScope.$digest();
+      $compile.calls.reset();
+      $httpBackend.flush();
+      expect($compile).not.toHaveBeenCalled();
+    });
+  });
+
+
   describe('autoscroll', function() {
     var autoScrollSpy;
 
@@ -432,9 +450,11 @@ describe('ngInclude', function() {
       });
 
       expect(autoScrollSpy).not.toHaveBeenCalled();
-      expect($animate.queue.shift().event).toBe('enter');
-      $animate.triggerCallbacks();
 
+      $animate.flush();
+      $rootScope.$digest();
+
+      expect($animate.queue.shift().event).toBe('enter');
       expect(autoScrollSpy).toHaveBeenCalledOnce();
     }));
 
@@ -450,7 +470,6 @@ describe('ngInclude', function() {
       });
 
       expect($animate.queue.shift().event).toBe('enter');
-      $animate.triggerCallbacks();
 
       $rootScope.$apply(function() {
         $rootScope.tpl = 'another.html';
@@ -459,7 +478,6 @@ describe('ngInclude', function() {
 
       expect($animate.queue.shift().event).toBe('leave');
       expect($animate.queue.shift().event).toBe('enter');
-      $animate.triggerCallbacks();
 
       $rootScope.$apply(function() {
         $rootScope.tpl = 'template.html';
@@ -468,10 +486,12 @@ describe('ngInclude', function() {
 
       expect($animate.queue.shift().event).toBe('leave');
       expect($animate.queue.shift().event).toBe('enter');
-      $animate.triggerCallbacks();
+
+      $animate.flush();
+      $rootScope.$digest();
 
       expect(autoScrollSpy).toHaveBeenCalled();
-      expect(autoScrollSpy.callCount).toBe(3);
+      expect(autoScrollSpy).toHaveBeenCalledTimes(3);
     }));
 
 
@@ -484,7 +504,6 @@ describe('ngInclude', function() {
       });
 
       expect($animate.queue.shift().event).toBe('enter');
-      $animate.triggerCallbacks();
       expect(autoScrollSpy).not.toHaveBeenCalled();
     }));
 
@@ -500,7 +519,6 @@ describe('ngInclude', function() {
       });
 
       expect($animate.queue.shift().event).toBe('enter');
-      $animate.triggerCallbacks();
 
       $rootScope.$apply(function() {
         $rootScope.tpl = 'template.html';
@@ -522,7 +540,9 @@ describe('ngInclude', function() {
 
           $rootScope.$apply("tpl = 'template.html'");
           expect($animate.queue.shift().event).toBe('enter');
-          $animate.triggerCallbacks();
+
+          $animate.flush();
+          $rootScope.$digest();
 
           expect(autoScrollSpy).toHaveBeenCalledOnce();
         }

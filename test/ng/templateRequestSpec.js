@@ -2,6 +2,83 @@
 
 describe('$templateRequest', function() {
 
+  describe('provider', function() {
+
+    describe('httpOptions', function() {
+
+      it('should default to undefined and fallback to default $http options', function() {
+
+        var defaultHeader;
+
+        module(function($templateRequestProvider) {
+          expect($templateRequestProvider.httpOptions()).toBeUndefined();
+        });
+
+        inject(function($templateRequest, $http, $templateCache) {
+          spyOn($http, 'get').and.callThrough();
+
+          $templateRequest('tpl.html');
+
+          expect($http.get).toHaveBeenCalledOnceWith('tpl.html', {
+            cache: $templateCache,
+            transformResponse: [  ]
+          });
+        });
+
+      });
+
+      it('should be configurable', function() {
+
+        function someTransform() {}
+
+        module(function($templateRequestProvider) {
+
+          // Configure the template request service to provide  specific headers and transforms
+          $templateRequestProvider.httpOptions({
+            headers: { Accept: 'moo' },
+            transformResponse: [someTransform]
+          });
+        });
+
+        inject(function($templateRequest, $http, $templateCache) {
+          spyOn($http, 'get').and.callThrough();
+
+          $templateRequest('tpl.html');
+
+          expect($http.get).toHaveBeenCalledOnceWith('tpl.html', {
+            cache: $templateCache,
+            transformResponse: [someTransform],
+            headers: { Accept: 'moo' }
+          });
+        });
+      });
+
+
+      it('should be allow you to override the cache', function() {
+
+        var httpOptions = {};
+
+        module(function($templateRequestProvider) {
+          $templateRequestProvider.httpOptions(httpOptions);
+        });
+
+        inject(function($templateRequest, $http, $cacheFactory) {
+          spyOn($http, 'get').and.callThrough();
+
+          var customCache = $cacheFactory('customCache');
+          httpOptions.cache = customCache;
+
+          $templateRequest('tpl.html');
+
+          expect($http.get).toHaveBeenCalledOnceWith('tpl.html', {
+            cache: customCache,
+            transformResponse: []
+          });
+        });
+      });
+    });
+  });
+
   it('should download the provided template file',
     inject(function($rootScope, $templateRequest, $httpBackend) {
 
@@ -79,6 +156,39 @@ describe('$templateRequest', function() {
       $rootScope.$digest();
       $httpBackend.flush();
     }).not.toThrow();
+  }));
+
+  it('should accept empty templates and refuse null or undefined templates in cache',
+    inject(function($rootScope, $templateRequest, $templateCache, $sce) {
+
+    // Will throw on any template not in cache.
+    spyOn($sce, 'getTrustedResourceUrl').and.returnValue(false);
+
+    expect(function() {
+      $templateRequest('tpl.html'); // should go through $sce
+      $rootScope.$digest();
+    }).toThrow();
+
+    $templateCache.put('tpl.html'); // is a no-op, so $sce check as well.
+    expect(function() {
+      $templateRequest('tpl.html');
+      $rootScope.$digest();
+    }).toThrow();
+    $templateCache.removeAll();
+
+    $templateCache.put('tpl.html', null); // makes no sense, but it's been added, so trust it.
+    expect(function() {
+      $templateRequest('tpl.html');
+      $rootScope.$digest();
+    }).not.toThrow();
+    $templateCache.removeAll();
+
+    $templateCache.put('tpl.html', ''); // should work (empty template)
+    expect(function() {
+      $templateRequest('tpl.html');
+      $rootScope.$digest();
+    }).not.toThrow();
+    $templateCache.removeAll();
   }));
 
   it('should keep track of how many requests are going on',
