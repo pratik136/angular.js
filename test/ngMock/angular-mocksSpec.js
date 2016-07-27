@@ -296,8 +296,10 @@ describe('ngMock', function() {
       expect(counter).toBe(1);
 
       $interval.flush(1000);
-
       expect(counter).toBe(2);
+
+      $interval.flush(2000);
+      expect(counter).toBe(4);
     }));
 
 
@@ -629,7 +631,6 @@ describe('ngMock', function() {
 
       inject(); // Trigger the tests in `module`
     });
-
   });
 
 
@@ -691,6 +692,30 @@ describe('ngMock', function() {
       expect(count).toBe(1);
       $timeout.flush(123);
       expect(count).toBe(2);
+    }));
+
+    it('should resolve timeout functions following the timeline', inject(function($timeout) {
+      var count1 = 0, count2 = 0;
+      var iterate1 = function() {
+        count1++;
+        $timeout(iterate1, 100);
+      };
+      var iterate2 = function() {
+        count2++;
+        $timeout(iterate2, 150);
+      };
+
+      $timeout(iterate1, 100);
+      $timeout(iterate2, 150);
+      $timeout.flush(150);
+      expect(count1).toBe(1);
+      expect(count2).toBe(1);
+      $timeout.flush(50);
+      expect(count1).toBe(2);
+      expect(count2).toBe(1);
+      $timeout.flush(400);
+      expect(count1).toBe(6);
+      expect(count2).toBe(4);
     }));
   });
 
@@ -959,6 +984,22 @@ describe('ngMock', function() {
           });
         }
       });
+
+      describe('ErrorAddingDeclarationLocationStack', function() {
+        it('should be caught by Jasmine\'s `toThrowError()`', function() {
+          function throwErrorAddingDeclarationStack() {
+            module(function($provide) {
+              $provide.factory('badFactory', function() {
+                throw new Error('BadFactoryError');
+              });
+            });
+
+            inject(function(badFactory) {});
+          }
+
+          expect(throwErrorAddingDeclarationStack).toThrowError(/BadFactoryError/);
+        });
+      });
     });
   });
 
@@ -970,6 +1011,7 @@ describe('ngMock', function() {
       callback = jasmine.createSpy('callback');
       hb = $httpBackend;
     }));
+
 
     it('should provide "expect" methods for each HTTP verb', function() {
       expect(typeof hb.expectGET).toBe("function");
@@ -989,6 +1031,7 @@ describe('ngMock', function() {
       expect(typeof hb.whenDELETE).toBe("function");
       expect(typeof hb.whenHEAD).toBe("function");
     });
+
 
     it('should provide "route" shortcuts for expect and when', function() {
       expect(typeof hb.whenRoute).toBe("function");
@@ -1144,6 +1187,97 @@ describe('ngMock', function() {
       hb.flush();
 
       expect(callback).toHaveBeenCalled();
+    });
+
+
+    it('should not error if the url is not provided', function() {
+      expect(function() {
+        hb.when('GET');
+
+        hb.whenGET();
+        hb.whenPOST();
+        hb.whenPUT();
+        hb.whenPATCH();
+        hb.whenDELETE();
+        hb.whenHEAD();
+
+        hb.expect('GET');
+
+        hb.expectGET();
+        hb.expectPOST();
+        hb.expectPUT();
+        hb.expectPATCH();
+        hb.expectDELETE();
+        hb.expectHEAD();
+      }).not.toThrow();
+    });
+
+
+    it('should error if the url is undefined', function() {
+      expect(function() {
+        hb.when('GET', undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.whenGET(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.whenDELETE(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.whenJSONP(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.whenHEAD(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.whenPATCH(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.whenPOST(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.whenPUT(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+
+      expect(function() {
+        hb.expect('GET', undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.expectGET(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.expectDELETE(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.expectJSONP(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.expectHEAD(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.expectPATCH(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.expectPOST(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
+
+      expect(function() {
+        hb.expectPUT(undefined);
+      }).toThrowError('Undefined argument `url`; the argument is provided but not defined');
     });
 
 
@@ -1521,6 +1655,7 @@ describe('ngMock', function() {
       });
     });
 
+
     describe('verifyRequests', function() {
 
       it('should throw exception if not all requests were flushed', function() {
@@ -1531,6 +1666,18 @@ describe('ngMock', function() {
           hb.verifyNoOutstandingRequest();
         }).toThrowError('Unflushed requests: 1');
       });
+
+
+      it('should verify requests fired asynchronously', inject(function($q) {
+        hb.when('GET').respond(200);
+        $q.resolve().then(function() {
+          hb('GET', '/some', null, noop, {});
+        });
+
+        expect(function() {
+          hb.verifyNoOutstandingRequest();
+        }).toThrowError('Unflushed requests: 1');
+      }));
     });
 
 
@@ -1591,6 +1738,7 @@ describe('ngMock', function() {
       });
     });
 
+
     describe('expectRoute/whenRoute shortcuts', function() {
       angular.forEach(['expectRoute', 'whenRoute'], function(routeShortcut) {
         var methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'JSONP'];
@@ -1621,6 +1769,7 @@ describe('ngMock', function() {
       });
     });
 
+
     describe('MockHttpExpectation', function() {
       /* global MockHttpExpectation */
 
@@ -1633,6 +1782,11 @@ describe('ngMock', function() {
         expect(exp.match('GET', 'a/x')).toBe(false);
       });
 
+      it('should match url with same query params, but different order', function() {
+        var exp = new MockHttpExpectation('GET', 'www.example.com/x/y?a=b&c=d&e=f');
+
+        expect(exp.matchUrl('www.example.com/x/y?e=f&c=d&a=b')).toBe(true);
+      });
 
       it('should accept url as function', function() {
         var urlValidator = function(url) {
@@ -1888,6 +2042,52 @@ describe('ngMock', function() {
         expect(called).toBe(true);
       });
     });
+
+    it('should support assigning bindings when a value is returned from the constructor',
+      function() {
+        var called = false;
+        var data = [
+          { name: 'derp1', id: 0 },
+          { name: 'testname', id: 1 },
+          { name: 'flurp', id: 2 }
+        ];
+        module(function($controllerProvider) {
+          $controllerProvider.register('testCtrl', function() {
+            called = true;
+            expect(this.data).toBe(data);
+
+            return {};
+          });
+        });
+        inject(function($controller, $rootScope) {
+          var ctrl = $controller('testCtrl', { scope: $rootScope }, { data: data });
+          expect(ctrl.data).toBe(data);
+          expect(called).toBe(true);
+        });
+      }
+    );
+
+    if (/chrome/.test(navigator.userAgent)) {
+      it('should support assigning bindings to class-based controller', function() {
+        var called = false;
+        var data = [
+          { name: 'derp1', id: 0 },
+          { name: 'testname', id: 1 },
+          { name: 'flurp', id: 2 }
+        ];
+        module(function($controllerProvider) {
+          //jshint evil: true
+          var TestCtrl = eval('(class { constructor() { called = true; } })');
+          //jshint evil: false
+          $controllerProvider.register('testCtrl', TestCtrl);
+        });
+        inject(function($controller, $rootScope) {
+          var ctrl = $controller('testCtrl', { scope: $rootScope }, { data: data });
+          expect(ctrl.data).toBe(data);
+          expect(called).toBe(true);
+        });
+      });
+    }
   });
 
 
@@ -2119,12 +2319,12 @@ describe('ngMockE2E', function() {
     var hb, realHttpBackend, callback;
 
     beforeEach(function() {
-      module(function($provide) {
-        callback = jasmine.createSpy('callback');
+      callback = jasmine.createSpy('callback');
+      angular.module('ng').config(function($provide) {
         realHttpBackend = jasmine.createSpy('real $httpBackend');
         $provide.value('$httpBackend', realHttpBackend);
-        $provide.decorator('$httpBackend', angular.mock.e2e.$httpBackendDecorator);
       });
+      module('ngMockE2E');
       inject(function($injector) {
         hb = $injector.get('$httpBackend');
       });
@@ -2448,8 +2648,10 @@ describe('make sure that we can create an injector outside of tests', function()
   angular.injector([function($injector) {}]);
 });
 
+
 describe('`afterEach` clean-up', function() {
   describe('`$rootElement`', function() {
+
     describe('undecorated', function() {
       var prevRootElement;
       var prevCleanDataSpy;
@@ -2611,6 +2813,7 @@ describe('`afterEach` clean-up', function() {
     });
   });
 });
+
 
 describe('sharedInjector', function() {
   // this is of a bit tricky feature to test as we hit angular's own testing
@@ -2869,5 +3072,4 @@ describe('sharedInjector', function() {
     if (typeof fn !== "function") throw Error("not fn", fn);
     sdescribe.current.afterEach.push(fn);
   }
-
 });

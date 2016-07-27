@@ -225,6 +225,94 @@ describe('$compile', function() {
       });
       inject(function($compile) {});
     });
+
+    it('should preserve context within declaration', function() {
+      module(function() {
+        directive('ff', function(log) {
+          var declaration = {
+            restrict: 'E',
+            template: function() {
+              log('ff template: ' + (this === declaration));
+            },
+            compile: function() {
+              log('ff compile: ' + (this === declaration));
+              return function() {
+                log('ff post: ' + (this === declaration));
+              };
+            }
+          };
+          return declaration;
+        });
+
+        directive('fff', function(log) {
+          var declaration = {
+            restrict: 'E',
+            link: {
+              pre: function() {
+                log('fff pre: ' + (this === declaration));
+              },
+              post: function() {
+                log('fff post: ' + (this === declaration));
+              }
+            }
+          };
+          return declaration;
+        });
+
+        directive('ffff', function(log) {
+          var declaration = {
+            restrict: 'E',
+            compile: function() {
+              return {
+                pre: function() {
+                  log('ffff pre: ' + (this === declaration));
+                },
+                post: function() {
+                  log('ffff post: ' + (this === declaration));
+                }
+              };
+            }
+          };
+          return declaration;
+        });
+
+        directive('fffff', function(log) {
+          var declaration = {
+            restrict: 'E',
+            templateUrl: function() {
+              log('fffff templateUrl: ' + (this === declaration));
+              return 'fffff.html';
+            },
+            link: function() {
+              log('fffff post: ' + (this === declaration));
+            }
+          };
+          return declaration;
+        });
+      });
+
+      inject(function($compile, $rootScope, $templateCache, log) {
+        $templateCache.put('fffff.html', '');
+
+        $compile('<ff></ff>')($rootScope);
+        $compile('<fff></fff>')($rootScope);
+        $compile('<ffff></ffff>')($rootScope);
+        $compile('<fffff></fffff>')($rootScope);
+        $rootScope.$digest();
+
+        expect(log).toEqual(
+          'ff template: true; ' +
+          'ff compile: true; ' +
+          'ff post: true; ' +
+          'fff pre: true; ' +
+          'fff post: true; ' +
+          'ffff pre: true; ' +
+          'ffff post: true; ' +
+          'fffff templateUrl: true; ' +
+          'fffff post: true'
+        );
+      });
+    });
   });
 
 
@@ -890,6 +978,40 @@ describe('$compile', function() {
           expect(div.attr('[value]')).toEqual('someExpression');
           expect(div.attr('ω')).toEqual('omega');
         }));
+
+
+        it('should not add white-space when merging an attribute that is "" in the replaced element',
+          inject(function($compile, $rootScope) {
+            element = $compile(
+              '<div><div replace class=""></div><div>')($rootScope);
+            var div = element.find('div');
+            expect(div.hasClass('log')).toBe(true);
+            expect(div.attr('class')).toBe('log');
+          })
+        );
+
+
+        it('should not set merged attributes twice in $attrs', function() {
+          var attrs;
+
+          module(function() {
+            directive('logAttrs', function() {
+              return {
+                link: function($scope, $element, $attrs) {
+                  attrs = $attrs;
+                }
+              };
+            });
+          });
+
+          inject(function($compile, $rootScope) {
+            element = $compile(
+              '<div><div log-attrs replace class="myLog"></div><div>')($rootScope);
+            var div = element.find('div');
+            expect(div.attr('class')).toBe('myLog log');
+            expect(attrs.class).toBe('myLog log');
+          });
+        });
 
 
         it('should prevent multiple templates per element', inject(function($compile) {
@@ -3563,6 +3685,46 @@ describe('$compile', function() {
           expect(Controller2.prototype.$onInit).toHaveBeenCalledOnce();
         });
       });
+
+      it('should continue to trigger other `$onInit` hooks if one throws an error', function() {
+        function ThrowingController() {
+          this.$onInit = function() {
+            throw new Error('bad hook');
+          };
+        }
+        function LoggingController($log) {
+          this.$onInit = function() {
+            $log.info('onInit');
+          };
+        }
+
+        angular.module('my', [])
+          .component('c1', {
+            controller: ThrowingController,
+            bindings: {'prop': '<'}
+          })
+          .component('c2', {
+            controller: LoggingController,
+            bindings: {'prop': '<'}
+          })
+          .config(function($exceptionHandlerProvider) {
+            // We need to test with the exceptionHandler not rethrowing...
+            $exceptionHandlerProvider.mode('log');
+          });
+
+        module('my');
+        inject(function($compile, $rootScope, $exceptionHandler, $log) {
+
+          // Setup the directive with bindings that will keep updating the bound value forever
+          element = $compile('<div><c1 prop="a"></c1><c2 prop="a"></c2>')($rootScope);
+
+          // The first component's error should be logged
+          expect($exceptionHandler.errors.pop()).toEqual(new Error('bad hook'));
+
+          // The second component's hook should still be called
+          expect($log.info.logs.pop()).toEqual(['onInit']);
+        });
+      });
     });
 
 
@@ -3666,6 +3828,96 @@ describe('$compile', function() {
       });
     });
 
+    describe('$doCheck', function() {
+      it('should call `$doCheck`, if provided, for each digest cycle, after $onChanges and $onInit', function() {
+        var log = [];
+
+        function TestController() { }
+        TestController.prototype.$doCheck = function() { log.push('$doCheck'); };
+        TestController.prototype.$onChanges = function() { log.push('$onChanges'); };
+        TestController.prototype.$onInit = function() { log.push('$onInit'); };
+
+        angular.module('my', [])
+          .component('dcc', {
+            controller: TestController,
+            bindings: { 'prop1': '<' }
+          });
+
+        module('my');
+        inject(function($compile, $rootScope) {
+          element = $compile('<dcc prop1="val"></dcc>')($rootScope);
+          expect(log).toEqual([
+            '$onChanges',
+            '$onInit',
+            '$doCheck'
+          ]);
+
+          // Clear log
+          log = [];
+
+          $rootScope.$apply();
+          expect(log).toEqual([
+            '$doCheck',
+            '$doCheck'
+          ]);
+
+          // Clear log
+          log = [];
+
+          $rootScope.$apply('val = 2');
+          expect(log).toEqual([
+            '$doCheck',
+            '$onChanges',
+            '$doCheck'
+          ]);
+        });
+      });
+
+      it('should work if $doCheck is provided in the constructor', function() {
+        var log = [];
+
+        function TestController() {
+          this.$doCheck = function() { log.push('$doCheck'); };
+          this.$onChanges = function() { log.push('$onChanges'); };
+          this.$onInit = function() { log.push('$onInit'); };
+        }
+
+        angular.module('my', [])
+          .component('dcc', {
+            controller: TestController,
+            bindings: { 'prop1': '<' }
+          });
+
+        module('my');
+        inject(function($compile, $rootScope) {
+          element = $compile('<dcc prop1="val"></dcc>')($rootScope);
+          expect(log).toEqual([
+            '$onChanges',
+            '$onInit',
+            '$doCheck'
+          ]);
+
+          // Clear log
+          log = [];
+
+          $rootScope.$apply();
+          expect(log).toEqual([
+            '$doCheck',
+            '$doCheck'
+          ]);
+
+          // Clear log
+          log = [];
+
+          $rootScope.$apply('val = 2');
+          expect(log).toEqual([
+            '$doCheck',
+            '$onChanges',
+            '$doCheck'
+          ]);
+        });
+      });
+    });
 
     describe('$onChanges', function() {
 
@@ -3823,6 +4075,7 @@ describe('$compile', function() {
 
           $rootScope.$apply('a = 7');
           element = $compile('<c1 prop="a" attr="{{a}}"></c1>')($rootScope);
+
           expect(log).toEqual([
             {
               prop: jasmine.objectContaining({currentValue: 7}),
@@ -3862,6 +4115,7 @@ describe('$compile', function() {
         inject(function($compile, $rootScope) {
           $rootScope.$apply('a = 7');
           element = $compile('<c1 prop="a" attr="{{a}}"></c1>')($rootScope);
+
           expect(log).toEqual([
             {
               prop: jasmine.objectContaining({currentValue: 7}),
@@ -4030,6 +4284,93 @@ describe('$compile', function() {
           $rootScope.$apply('a = 42');
           expect($exceptionHandler.errors.length).toEqual(1);
           expect($exceptionHandler.errors[0].toString()).toContain('[$compile:infchng] 10 $onChanges() iterations reached.');
+        });
+      });
+
+
+      it('should continue to trigger other `$onChanges` hooks if one throws an error', function() {
+        function ThrowingController() {
+          this.$onChanges = function(change) {
+            throw new Error('bad hook');
+          };
+        }
+        function LoggingController($log) {
+          this.$onChanges = function(change) {
+            $log.info('onChange');
+          };
+        }
+
+        angular.module('my', [])
+          .component('c1', {
+            controller: ThrowingController,
+            bindings: {'prop': '<'}
+          })
+          .component('c2', {
+            controller: LoggingController,
+            bindings: {'prop': '<'}
+          })
+          .config(function($exceptionHandlerProvider) {
+            // We need to test with the exceptionHandler not rethrowing...
+            $exceptionHandlerProvider.mode('log');
+          });
+
+        module('my');
+        inject(function($compile, $rootScope, $exceptionHandler, $log) {
+
+          // Setup the directive with bindings that will keep updating the bound value forever
+          element = $compile('<div><c1 prop="a"></c1><c2 prop="a"></c2>')($rootScope);
+
+          // The first component's error should be logged
+          expect($exceptionHandler.errors.pop()).toEqual(new Error('bad hook'));
+
+          // The second component's changes should still be called
+          expect($log.info.logs.pop()).toEqual(['onChange']);
+
+          $rootScope.$apply('a = 42');
+
+          // The first component's error should be logged
+          var errors = $exceptionHandler.errors.pop();
+          expect(errors[0]).toEqual(new Error('bad hook'));
+
+          // The second component's changes should still be called
+          expect($log.info.logs.pop()).toEqual(['onChange']);
+        });
+      });
+
+
+      it('should collect up all `$onChanges` errors into one throw', function() {
+        function ThrowingController() {
+          this.$onChanges = function(change) {
+            throw new Error('bad hook: ' + this.prop);
+          };
+        }
+
+        angular.module('my', [])
+          .component('c1', {
+            controller: ThrowingController,
+            bindings: {'prop': '<'}
+          })
+          .config(function($exceptionHandlerProvider) {
+            // We need to test with the exceptionHandler not rethrowing...
+            $exceptionHandlerProvider.mode('log');
+          });
+
+        module('my');
+        inject(function($compile, $rootScope, $exceptionHandler, $log) {
+
+          // Setup the directive with bindings that will keep updating the bound value forever
+          element = $compile('<div><c1 prop="a"></c1><c1 prop="a * 2"></c1>')($rootScope);
+
+          // Both component's errors should be logged
+          expect($exceptionHandler.errors.pop()).toEqual(new Error('bad hook: NaN'));
+          expect($exceptionHandler.errors.pop()).toEqual(new Error('bad hook: undefined'));
+
+          $rootScope.$apply('a = 42');
+
+          // Both component's error should be logged
+          var errors = $exceptionHandler.errors.pop();
+          expect(errors.pop()).toEqual(new Error('bad hook: 84'));
+          expect(errors.pop()).toEqual(new Error('bad hook: 42'));
         });
       });
     });
@@ -4485,6 +4826,14 @@ describe('$compile', function() {
         expect(componentScope.attrAlias).toEqual(componentScope.attr);
       }));
 
+      it('should copy an attribute with spaces', inject(function() {
+        compile('<div><span my-component attr=" some text ">');
+
+        expect(componentScope.attr).toEqual(' some text ');
+        expect(componentScope.attrAlias).toEqual(' some text ');
+        expect(componentScope.attrAlias).toEqual(componentScope.attr);
+      }));
+
       it('should set up the interpolation before it reaches the link function', inject(function() {
         $rootScope.name = 'misko';
         compile('<div><span my-component attr="hello {{name}}">');
@@ -4744,6 +5093,7 @@ describe('$compile', function() {
     describe('one-way binding', function() {
       it('should update isolate when the identity of origin changes', inject(function() {
         compile('<div><span my-component ow-ref="obj">');
+
         expect(componentScope.owRef).toBeUndefined();
         expect(componentScope.owRefAlias).toBe(componentScope.owRef);
 
@@ -4780,6 +5130,7 @@ describe('$compile', function() {
 
       it('should update isolate when both change', inject(function() {
         compile('<div><span my-component ow-ref="name">');
+
         $rootScope.name = {mark:123};
         componentScope.owRef = 'misko';
 
@@ -4796,6 +5147,101 @@ describe('$compile', function() {
         expect(componentScope.owRefAlias).toBe($rootScope.name);
       }));
 
+      describe('initialization', function() {
+        var component, log;
+
+        beforeEach(function() {
+          log = [];
+          angular.module('owComponentTest', [])
+            .component('owComponent', {
+              bindings: { input: '<' },
+              controller: function() {
+                component = this;
+                this.input = 'constructor';
+                log.push('constructor');
+
+                this.$onInit = function() {
+                  this.input = '$onInit';
+                  log.push('$onInit');
+                };
+
+                this.$onChanges = function(changes) {
+                  if (changes.input) {
+                    log.push(['$onChanges', changes.input]);
+                  }
+                };
+              }
+            });
+        });
+
+        it('should not update isolate again after $onInit if outer has not changed', function() {
+          module('owComponentTest');
+          inject(function() {
+            $rootScope.name = 'outer';
+            compile('<ow-component input="name"></ow-component>');
+
+            expect($rootScope.name).toEqual('outer');
+            expect(component.input).toEqual('$onInit');
+
+            $rootScope.$apply();
+
+            expect($rootScope.name).toEqual('outer');
+            expect(component.input).toEqual('$onInit');
+
+            expect(log).toEqual([
+              'constructor',
+              ['$onChanges', jasmine.objectContaining({ currentValue: 'outer' })],
+              '$onInit'
+            ]);
+          });
+        });
+
+        it('should update isolate again after $onInit if outer has changed (before initial watchAction call)', function() {
+          module('owComponentTest');
+          inject(function() {
+            $rootScope.name = 'outer1';
+            compile('<ow-component input="name"></ow-component>');
+
+            expect(component.input).toEqual('$onInit');
+            $rootScope.$apply('name = "outer2"');
+
+            expect($rootScope.name).toEqual('outer2');
+            expect(component.input).toEqual('outer2');
+            expect(log).toEqual([
+              'constructor',
+              ['$onChanges', jasmine.objectContaining({ currentValue: 'outer1' })],
+              '$onInit',
+              ['$onChanges', jasmine.objectContaining({ currentValue: 'outer2', previousValue: 'outer1' })]
+            ]);
+          });
+        });
+
+        it('should update isolate again after $onInit if outer has changed (before initial watchAction call)', function() {
+          angular.module('owComponentTest')
+            .directive('changeInput', function() {
+              return function(scope, elem, attrs) {
+                scope.name = 'outer2';
+              };
+            });
+          module('owComponentTest');
+          inject(function() {
+            $rootScope.name = 'outer1';
+            compile('<ow-component input="name" change-input></ow-component>');
+
+            expect(component.input).toEqual('$onInit');
+            $rootScope.$digest();
+
+            expect($rootScope.name).toEqual('outer2');
+            expect(component.input).toEqual('outer2');
+            expect(log).toEqual([
+              'constructor',
+              ['$onChanges', jasmine.objectContaining({ currentValue: 'outer1' })],
+              '$onInit',
+              ['$onChanges', jasmine.objectContaining({ currentValue: 'outer2', previousValue: 'outer1' })]
+            ]);
+          });
+        });
+      });
 
       it('should not break when isolate and origin both change to the same value', inject(function() {
         $rootScope.name = 'aaa';
@@ -4819,7 +5265,6 @@ describe('$compile', function() {
         $rootScope.name = {mark:123};
         compile('<div><span my-component ow-ref="name">');
 
-        $rootScope.$apply();
         expect($rootScope.name).toEqual({mark:123});
         expect(componentScope.owRef).toBe($rootScope.name);
         expect(componentScope.owRefAlias).toBe($rootScope.name);
@@ -4836,7 +5281,6 @@ describe('$compile', function() {
         $rootScope.obj = {mark:123};
         compile('<div><span my-component ow-ref="obj">');
 
-        $rootScope.$apply();
         expect($rootScope.obj).toEqual({mark:123});
         expect(componentScope.owRef).toBe($rootScope.obj);
 
@@ -4849,6 +5293,7 @@ describe('$compile', function() {
 
       it('should not throw on non assignable expressions in the parent', inject(function() {
         compile('<div><span my-component ow-ref="\'hello \' + name">');
+
         $rootScope.name = 'world';
         $rootScope.$apply();
         expect(componentScope.owRef).toBe('hello world');
@@ -4865,7 +5310,7 @@ describe('$compile', function() {
 
       it('should not throw when assigning to undefined', inject(function() {
         compile('<div><span my-component>');
-        $rootScope.$apply();
+
         expect(componentScope.owRef).toBeUndefined();
 
         componentScope.owRef = 'ignore me';
@@ -4879,6 +5324,7 @@ describe('$compile', function() {
       it('should update isolate scope when "<"-bound NaN changes', inject(function() {
         $rootScope.num = NaN;
         compile('<div my-component ow-ref="num"></div>');
+
         var isolateScope = element.isolateScope();
         expect(isolateScope.owRef).toBeNaN();
 
@@ -4917,7 +5363,7 @@ describe('$compile', function() {
           $rootScope.name = 'georgios';
           $rootScope.obj = {name: 'pete'};
           compile('<div><span my-component ow-ref="[{name: name}, obj]">');
-          $rootScope.$apply();
+
           expect(componentScope.owRef).toEqual([{name: 'georgios'}, {name: 'pete'}]);
 
           $rootScope.name = 'lucas';
@@ -4931,7 +5377,7 @@ describe('$compile', function() {
           $rootScope.name = 'georgios';
           $rootScope.obj = {name: 'pete'};
           compile('<div><span my-component ow-ref="{name: name, item: obj}">');
-          $rootScope.$apply();
+
           expect(componentScope.owRef).toEqual({name: 'georgios', item: {name: 'pete'}});
 
           $rootScope.name = 'lucas';
@@ -4967,7 +5413,6 @@ describe('$compile', function() {
           function test(literalString, literalValue) {
             compile('<div><span my-component ow-ref="' + literalString + '">');
 
-            $rootScope.$apply();
             expect(componentScope.owRef).toBe(literalValue);
             dealoc(element);
           }
@@ -4976,6 +5421,7 @@ describe('$compile', function() {
         describe('optional one-way binding', function() {
           it('should update local when origin changes', inject(function() {
             compile('<div><span my-component ow-optref="name">');
+
             expect(componentScope.owOptref).toBeUndefined();
             expect(componentScope.owOptrefAlias).toBe(componentScope.owOptref);
 
@@ -7585,7 +8031,7 @@ describe('$compile', function() {
           directive('trans', function() {
             return {
               transclude: true,
-              template: '<div ng-transclude>old stuff! </div>'
+              template: '<div ng-transclude>old stuff!</div>'
             };
           });
         });
@@ -7602,17 +8048,151 @@ describe('$compile', function() {
           directive('trans', function() {
             return {
               transclude: true,
-              template: '<div ng-transclude>old stuff! </div>'
+              template: '<div ng-transclude>old stuff!</div>'
             };
           });
         });
         inject(function(log, $rootScope, $compile) {
           element = $compile('<div trans></div>')($rootScope);
           $rootScope.$apply();
-          expect(sortedHtml(element.html())).toEqual('<div ng-transclude="">old stuff! </div>');
+          expect(sortedHtml(element.html())).toEqual('<div ng-transclude="">old stuff!</div>');
         });
       });
 
+
+      it('should clear the fallback content from the element during compile and before linking', function() {
+        module(function() {
+          directive('trans', function() {
+            return {
+              transclude: true,
+              template: '<div ng-transclude>fallback content</div>'
+            };
+          });
+        });
+        inject(function(log, $rootScope, $compile) {
+          element = jqLite('<div trans></div>');
+          var linkfn = $compile(element);
+          expect(element.html()).toEqual('<div ng-transclude=""></div>');
+          linkfn($rootScope);
+          $rootScope.$apply();
+          expect(sortedHtml(element.html())).toEqual('<div ng-transclude="">fallback content</div>');
+        });
+      });
+
+
+      it('should allow cloning of the fallback via ngRepeat', function() {
+        module(function() {
+          directive('trans', function() {
+            return {
+              transclude: true,
+              template: '<div ng-repeat="i in [0,1,2]"><div ng-transclude>{{i}}</div></div>'
+            };
+          });
+        });
+        inject(function(log, $rootScope, $compile) {
+          element = $compile('<div trans></div>')($rootScope);
+          $rootScope.$apply();
+          expect(element.text()).toEqual('012');
+        });
+      });
+
+
+      it('should not link the fallback content if transcluded content is provided', function() {
+        var linkSpy = jasmine.createSpy('postlink');
+
+        module(function() {
+          directive('inner', function() {
+            return {
+              restrict: 'E',
+              template: 'old stuff! ',
+              link: linkSpy
+            };
+          });
+
+          directive('trans', function() {
+            return {
+              transclude: true,
+              template: '<div ng-transclude><inner></inner></div>'
+            };
+          });
+        });
+        inject(function($rootScope, $compile) {
+          element = $compile('<div trans>unicorn!</div>')($rootScope);
+          $rootScope.$apply();
+          expect(sortedHtml(element.html())).toEqual('<div ng-transclude="">unicorn!</div>');
+          expect(linkSpy).not.toHaveBeenCalled();
+        });
+      });
+
+      it('should compile and link the fallback content if no transcluded content is provided', function() {
+        var linkSpy = jasmine.createSpy('postlink');
+
+        module(function() {
+          directive('inner', function() {
+            return {
+              restrict: 'E',
+              template: 'old stuff! ',
+              link: linkSpy
+            };
+          });
+
+          directive('trans', function() {
+            return {
+              transclude: true,
+              template: '<div ng-transclude><inner></inner></div>'
+            };
+          });
+        });
+        inject(function(log, $rootScope, $compile) {
+          element = $compile('<div trans></div>')($rootScope);
+          $rootScope.$apply();
+          expect(sortedHtml(element.html())).toEqual('<div ng-transclude=""><inner>old stuff! </inner></div>');
+          expect(linkSpy).toHaveBeenCalled();
+        });
+      });
+
+      it('should compile and link the fallback content if an optional transclusion slot is not provided', function() {
+        var linkSpy = jasmine.createSpy('postlink');
+
+        module(function() {
+          directive('inner', function() {
+            return {
+              restrict: 'E',
+              template: 'old stuff! ',
+              link: linkSpy
+            };
+          });
+
+          directive('trans', function() {
+            return {
+              transclude: { optionalSlot: '?optional'},
+              template: '<div ng-transclude="optionalSlot"><inner></inner></div>'
+            };
+          });
+        });
+        inject(function(log, $rootScope, $compile) {
+          element = $compile('<div trans></div>')($rootScope);
+          $rootScope.$apply();
+          expect(sortedHtml(element.html())).toEqual('<div ng-transclude="optionalSlot"><inner>old stuff! </inner></div>');
+          expect(linkSpy).toHaveBeenCalled();
+        });
+      });
+
+      it('should cope if there is neither transcluded content nor fallback content', function() {
+        module(function() {
+          directive('trans', function() {
+            return {
+              transclude: true,
+              template: '<div ng-transclude></div>'
+            };
+          });
+        });
+        inject(function($rootScope, $compile) {
+          element = $compile('<div trans></div>')($rootScope);
+          $rootScope.$apply();
+          expect(sortedHtml(element.html())).toEqual('<div ng-transclude=""></div>');
+        });
+      });
 
       it('should throw on an ng-transclude element inside no transclusion directive', function() {
         inject(function($rootScope, $compile) {
@@ -8438,7 +9018,7 @@ describe('$compile', function() {
           expect(function() {
             $compile('<div first second></div>');
           }).toThrowMinErr('$compile', 'multidir', 'Multiple directives [first, second] asking for transclusion on: ' +
-                  '<!-- first:  -->');
+                  '<!-- first: -->');
         });
       });
 
@@ -9410,37 +9990,6 @@ describe('$compile', function() {
         expect(element.children().eq(2).text()).toEqual('dorothy');
       });
     });
-
-    it('should not overwrite the contents of an `ng-transclude` element, if the matching optional slot is not filled', function() {
-      module(function() {
-        directive('minionComponent', function() {
-          return {
-            restrict: 'E',
-            scope: {},
-            transclude: {
-              minionSlot: 'minion',
-              bossSlot: '?boss'
-            },
-            template:
-              '<div class="boss" ng-transclude="bossSlot">default boss content</div>' +
-              '<div class="minion" ng-transclude="minionSlot">default minion content</div>' +
-              '<div class="other" ng-transclude>default content</div>'
-          };
-        });
-      });
-      inject(function($rootScope, $compile) {
-        element = $compile(
-          '<minion-component>' +
-            '<minion>stuart</minion>' +
-            '<span>dorothy</span>' +
-            '<minion>kevin</minion>' +
-          '</minion-component>')($rootScope);
-        $rootScope.$apply();
-        expect(element.children().eq(0).text()).toEqual('default boss content');
-        expect(element.children().eq(1).text()).toEqual('stuartkevin');
-        expect(element.children().eq(2).text()).toEqual('dorothy');
-      });
-    });
   });
 
 
@@ -9815,6 +10364,7 @@ describe('$compile', function() {
           "loading resource from url not allowed by $sceDelegate policy.  URL: javascript:doTrustedStuff()");
     }));
 
+
     it('should pass through $sce.trustAs() values in action attribute', inject(function($compile, $rootScope, $sce) {
       /* jshint scripturl:true */
       element = $compile('<form action="{{testUrl}}"></form>')($rootScope);
@@ -9822,6 +10372,36 @@ describe('$compile', function() {
       $rootScope.$apply();
 
       expect(element.attr('action')).toEqual('javascript:doTrustedStuff()');
+    }));
+  });
+
+  describe('link[href]', function() {
+    it('should reject invalid RESOURCE_URLs', inject(function($compile, $rootScope) {
+      element = $compile('<link href="{{testUrl}}" rel="stylesheet" />')($rootScope);
+      $rootScope.testUrl = "https://evil.example.org/css.css";
+      expect(function() { $rootScope.$apply(); }).toThrowMinErr(
+          "$interpolate", "interr", "Can't interpolate: {{testUrl}}\nError: [$sce:insecurl] Blocked " +
+          "loading resource from url not allowed by $sceDelegate policy.  URL: " +
+          "https://evil.example.org/css.css");
+    }));
+
+    it('should accept valid RESOURCE_URLs', inject(function($compile, $rootScope, $sce) {
+      element = $compile('<link href="{{testUrl}}" rel="stylesheet" />')($rootScope);
+
+      $rootScope.testUrl = "./css1.css";
+      $rootScope.$apply();
+      expect(element.attr('href')).toContain('css1.css');
+
+      $rootScope.testUrl = $sce.trustAsResourceUrl('https://elsewhere.example.org/css2.css');
+      $rootScope.$apply();
+      expect(element.attr('href')).toContain('https://elsewhere.example.org/css2.css');
+    }));
+
+    it('should accept valid constants', inject(function($compile, $rootScope) {
+      element = $compile('<link href="https://elsewhere.example.org/css2.css" rel="stylesheet" />')($rootScope);
+
+      $rootScope.$apply();
+      expect(element.attr('href')).toContain('https://elsewhere.example.org/css2.css');
     }));
   });
 

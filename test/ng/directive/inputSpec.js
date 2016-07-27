@@ -1858,6 +1858,16 @@ describe('input', function() {
         var inputElm = helper.compileInput('<input name="myControl" type="date" min="{{ min }}" ng-model="value">');
 
         $rootScope.value = new Date(2010, 1, 1, 0, 0, 0);
+        $rootScope.min = new Date(2014, 10, 10, 0, 0, 0).toISOString();
+        $rootScope.$digest();
+
+        expect($rootScope.form.myControl.$error.min).toBeTruthy();
+      });
+
+      it('should parse interpolated Date objects as a valid min date value', function() {
+        var inputElm = helper.compileInput('<input name="myControl" type="date" min="{{ min }}" ng-model="value">');
+
+        $rootScope.value = new Date(2010, 1, 1, 0, 0, 0);
         $rootScope.min = new Date(2014, 10, 10, 0, 0, 0);
         $rootScope.$digest();
 
@@ -1894,6 +1904,16 @@ describe('input', function() {
       });
 
       it('should parse ISO-based date strings as a valid max date value', function() {
+        var inputElm = helper.compileInput('<input name="myControl" type="date" max="{{ max }}" ng-model="value">');
+
+        $rootScope.value = new Date(2020, 1, 1, 0, 0, 0);
+        $rootScope.max = new Date(2014, 10, 10, 0, 0, 0).toISOString();
+        $rootScope.$digest();
+
+        expect($rootScope.form.myControl.$error.max).toBeTruthy();
+      });
+
+      it('should parse interpolated Date objects as a valid max date value', function() {
         var inputElm = helper.compileInput('<input name="myControl" type="date" max="{{ max }}" ng-model="value">');
 
         $rootScope.value = new Date(2020, 1, 1, 0, 0, 0);
@@ -1985,6 +2005,44 @@ describe('input', function() {
       expect(inputElm).toBeInvalid();
 
       $rootScope.min = '2009-01-01';
+      $rootScope.$digest();
+
+      expect(inputElm).toBeValid();
+    });
+
+
+    it('should allow Date objects as valid ng-max values', function() {
+      $rootScope.max = new Date(2012, 1, 1, 1, 2, 0);
+      var inputElm = helper.compileInput('<input type="datetime-local" ng-model="value" name="alias" ng-max="max" />');
+
+      helper.changeInputValueTo('2014-01-01T12:34:00');
+      expect(inputElm).toBeInvalid();
+
+      $rootScope.max = new Date(2013, 1, 1, 1, 2, 0);
+      $rootScope.$digest();
+
+      expect(inputElm).toBeInvalid();
+
+      $rootScope.max = new Date(2014, 1, 1, 1, 2, 0);
+      $rootScope.$digest();
+
+      expect(inputElm).toBeValid();
+    });
+
+
+    it('should allow Date objects as valid ng-min values', function() {
+      $rootScope.min = new Date(2013, 1, 1, 1, 2, 0);
+      var inputElm = helper.compileInput('<input type="datetime-local" ng-model="value" name="alias" ng-min="min" />');
+
+      helper.changeInputValueTo('2010-01-01T12:34:00');
+      expect(inputElm).toBeInvalid();
+
+      $rootScope.min = new Date(2014, 1, 1, 1, 2, 0);
+      $rootScope.$digest();
+
+      expect(inputElm).toBeInvalid();
+
+      $rootScope.min = new Date(2009, 1, 1, 1, 2, 0);
       $rootScope.$digest();
 
       expect(inputElm).toBeValid();
@@ -2784,14 +2842,103 @@ describe('input', function() {
     describe('EMAIL_REGEXP', function() {
       /* global EMAIL_REGEXP: false */
       it('should validate email', function() {
+        /* basic functionality */
         expect(EMAIL_REGEXP.test('a@b.com')).toBe(true);
         expect(EMAIL_REGEXP.test('a@b.museum')).toBe(true);
         expect(EMAIL_REGEXP.test('a@B.c')).toBe(true);
+        /* domain label separation, hyphen-minus, syntax */
+        expect(EMAIL_REGEXP.test('a@b.c.')).toBe(false);
         expect(EMAIL_REGEXP.test('a@.b.c')).toBe(false);
         expect(EMAIL_REGEXP.test('a@-b.c')).toBe(false);
         expect(EMAIL_REGEXP.test('a@b-.c')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@b-c')).toBe(true);
+        expect(EMAIL_REGEXP.test('a@-')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@.')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@host_name')).toBe(false);
+        /* leading or sole digit */
         expect(EMAIL_REGEXP.test('a@3b.c')).toBe(true);
+        expect(EMAIL_REGEXP.test('a@3')).toBe(true);
+        /* TLD eMail address */
         expect(EMAIL_REGEXP.test('a@b')).toBe(true);
+        /* domain valid characters */
+        expect(EMAIL_REGEXP.test('a@abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ.0123456789')).toBe(true);
+        /* domain invalid characters */
+        expect(EMAIL_REGEXP.test('a@')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@ ')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@!')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@"')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@#')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@$')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@%')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@&')).toBe(false);
+        expect(EMAIL_REGEXP.test("a@'")).toBe(false);
+        expect(EMAIL_REGEXP.test('a@(')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@)')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@*')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@+')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@,')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@/')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@:')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@;')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@<')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@=')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@>')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@?')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@@')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@[')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@\\')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@]')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@^')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@_')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@`')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@{')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@|')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@}')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@~')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@İ')).toBe(false);
+        expect(EMAIL_REGEXP.test('a@ı')).toBe(false);
+        /* domain length, label and total */
+        expect(EMAIL_REGEXP.test('a@xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')).toBe(true);
+        expect(EMAIL_REGEXP.test('a@xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')).toBe(false);
+        /* jshint maxlen:320 */
+        expect(EMAIL_REGEXP.test('a@xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')).toBe(true);
+        expect(EMAIL_REGEXP.test('a@xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.x')).toBe(true);
+        expect(EMAIL_REGEXP.test('a@xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xx')).toBe(false);
+        expect(EMAIL_REGEXP.test('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xx')).toBe(true);
+        expect(EMAIL_REGEXP.test('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxx')).toBe(false);
+        /* jshint maxlen:200 */
+        /* local-part valid characters and dot-atom syntax */
+        expect(EMAIL_REGEXP.test("'@x")).toBe(true);
+        expect(EMAIL_REGEXP.test('-!#$%&*+/0123456789=?ABCDEFGHIJKLMNOPQRSTUVWXYZ@x')).toBe(true);
+        expect(EMAIL_REGEXP.test('^_`abcdefghijklmnopqrstuvwxyz{|}~@x')).toBe(true);
+        expect(EMAIL_REGEXP.test(".@x")).toBe(false);
+        expect(EMAIL_REGEXP.test("'.@x")).toBe(false);
+        expect(EMAIL_REGEXP.test(".'@x")).toBe(false);
+        expect(EMAIL_REGEXP.test("'.'@x")).toBe(true);
+        /* local-part invalid characters */
+        expect(EMAIL_REGEXP.test('@x')).toBe(false);
+        expect(EMAIL_REGEXP.test(' @x')).toBe(false);
+        expect(EMAIL_REGEXP.test('"@x')).toBe(false);
+        expect(EMAIL_REGEXP.test('(@x')).toBe(false);
+        expect(EMAIL_REGEXP.test(')@x')).toBe(false);
+        expect(EMAIL_REGEXP.test(',@x')).toBe(false);
+        expect(EMAIL_REGEXP.test(':@x')).toBe(false);
+        expect(EMAIL_REGEXP.test(';@x')).toBe(false);
+        expect(EMAIL_REGEXP.test('<@x')).toBe(false);
+        expect(EMAIL_REGEXP.test('>@x')).toBe(false);
+        expect(EMAIL_REGEXP.test('@@x')).toBe(false);
+        expect(EMAIL_REGEXP.test('[@x')).toBe(false);
+        expect(EMAIL_REGEXP.test('\\@x')).toBe(false);
+        expect(EMAIL_REGEXP.test(']@x')).toBe(false);
+        expect(EMAIL_REGEXP.test('İ@x')).toBe(false);
+        expect(EMAIL_REGEXP.test('ı@x')).toBe(false);
+        /* local-part size limit */
+        expect(EMAIL_REGEXP.test('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx@x')).toBe(true);
+        expect(EMAIL_REGEXP.test('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx@x')).toBe(false);
+        /* content (local-part + ‘@’ + domain) is required */
+        expect(EMAIL_REGEXP.test('')).toBe(false);
+        expect(EMAIL_REGEXP.test('a')).toBe(false);
+        expect(EMAIL_REGEXP.test('aa')).toBe(false);
       });
     });
   });
@@ -2988,6 +3135,53 @@ describe('input', function() {
 
       expect(inputElm[0].checked).toBe(false);
       expect(inputElm[1].checked).toBe(false);
+    });
+
+
+    it('should allow the use of ngTrim', function() {
+      $rootScope.some = 11;
+      var inputElm = helper.compileInput(
+          '<input type="radio" ng-model="value" value="opt1" />' +
+          '<input type="radio" ng-model="value" value="  opt2  " />' +
+          '<input type="radio" ng-model="value" ng-trim="false" value="  opt3  " />' +
+          '<input type="radio" ng-model="value" ng-trim="false" value="{{some}}" />' +
+          '<input type="radio" ng-model="value" ng-trim="false" value="  {{some}}  " />');
+
+      $rootScope.$apply(function() {
+        $rootScope.value = 'blue';
+        $rootScope.some = 'blue';
+      });
+
+      expect(inputElm[0].checked).toBe(false);
+      expect(inputElm[1].checked).toBe(false);
+      expect(inputElm[2].checked).toBe(false);
+      expect(inputElm[3].checked).toBe(true);
+      expect(inputElm[4].checked).toBe(false);
+
+      browserTrigger(inputElm[1], 'click');
+      expect($rootScope.value).toBe('opt2');
+      browserTrigger(inputElm[2], 'click');
+      expect($rootScope.value).toBe('  opt3  ');
+      browserTrigger(inputElm[3], 'click');
+      expect($rootScope.value).toBe('blue');
+      browserTrigger(inputElm[4], 'click');
+      expect($rootScope.value).toBe('  blue  ');
+
+      $rootScope.$apply("value = '  opt2  '");
+      expect(inputElm[1].checked).toBe(false);
+      $rootScope.$apply("value = 'opt2'");
+      expect(inputElm[1].checked).toBe(true);
+      $rootScope.$apply("value = '  opt3  '");
+      expect(inputElm[2].checked).toBe(true);
+      $rootScope.$apply("value = 'opt3'");
+      expect(inputElm[2].checked).toBe(false);
+
+      $rootScope.$apply("value = 'blue'");
+      expect(inputElm[3].checked).toBe(true);
+      expect(inputElm[4].checked).toBe(false);
+      $rootScope.$apply("value = '  blue  '");
+      expect(inputElm[3].checked).toBe(false);
+      expect(inputElm[4].checked).toBe(true);
     });
   });
 

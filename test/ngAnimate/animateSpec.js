@@ -13,7 +13,7 @@ describe("animations", function() {
     };
   }));
 
-  afterEach(inject(function($$jqLite) {
+  afterEach(inject(function() {
     dealoc(element);
   }));
 
@@ -179,7 +179,7 @@ describe("animations", function() {
       });
     });
 
-    it('should animate only the specified CSS className matched within $animateProvider.classNameFilter', function() {
+    it('should animate only the specified CSS className matched within $animateProvider.classNameFilter for div', function() {
       module(function($animateProvider) {
         $animateProvider.classNameFilter(/only-allow-this-animation/);
       });
@@ -193,6 +193,26 @@ describe("animations", function() {
         element.addClass('only-allow-this-animation');
 
         $animate.leave(element, parent);
+        $rootScope.$digest();
+        expect(capturedAnimation).toBeTruthy();
+      });
+    });
+
+    it('should animate only the specified CSS className matched within $animateProvider.classNameFilter for svg', function() {
+      module(function($animateProvider) {
+        $animateProvider.classNameFilter(/only-allow-this-animation-svg/);
+      });
+      inject(function($animate, $rootScope, $compile) {
+        var svgElement = $compile('<svg class="element"></svg>')($rootScope);
+        expect(svgElement).not.toHaveClass('only-allow-this-animation-svg');
+
+        $animate.enter(svgElement, parent);
+        $rootScope.$digest();
+        expect(capturedAnimation).toBeFalsy();
+
+        svgElement.attr('class', 'element only-allow-this-animation-svg');
+
+        $animate.leave(svgElement, parent);
         $rootScope.$digest();
         expect(capturedAnimation).toBeTruthy();
       });
@@ -393,6 +413,19 @@ describe("animations", function() {
 
       expect(capturedAnimation).toBeFalsy();
     }));
+
+    it('should not attempt to perform an animation on an empty jqLite collection',
+      inject(function($rootScope, $animate) {
+
+        element.html('');
+        var emptyNode = jqLite(element[0].firstChild);
+
+        $animate.addClass(emptyNode, 'some-class');
+        $rootScope.$digest();
+
+        expect(capturedAnimation).toBeFalsy();
+      })
+    );
 
     it('should perform the leave domOperation if a text node is used',
       inject(function($rootScope, $animate) {
@@ -1955,6 +1988,17 @@ describe("animations", function() {
       $animate.flush();
       expect(count).toBe(5);
     }));
+
+    it('should not get affected by custom, enumerable properties on `Object.prototype`',
+      inject(function($animate) {
+        Object.prototype.foo = 'ENUMARABLE_AND_NOT_AN_ARRAY';
+
+        element = jqLite('<div></div>');
+        expect(function() { $animate.off(element); }).not.toThrow();
+
+        delete Object.prototype.foo;
+      })
+    );
 
     it('should fire a `start` callback when the animation starts with the matching element',
       inject(function($animate, $rootScope, $rootElement, $document) {

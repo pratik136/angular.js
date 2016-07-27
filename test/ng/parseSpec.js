@@ -868,7 +868,6 @@ describe('parser', function() {
     });
 
 
-
     it('should understand logical operators', function() {
       forEach(['||', '&&'], function(operator) {
         expect(createAst('foo' + operator + 'bar')).toEqual(
@@ -916,7 +915,6 @@ describe('parser', function() {
         );
       });
     });
-
 
 
     it('should understand ternary operators', function() {
@@ -1081,7 +1079,6 @@ describe('parser', function() {
         }
       );
     });
-
 
 
     it('should give higher precedence to the logical `or` than to the conditional operator', function() {
@@ -1355,6 +1352,7 @@ describe('parser', function() {
       );
     });
 
+
     it('should understand ES6 object initializer', function() {
       // Shorthand properties definitions.
       expect(createAst('{x, y, z}')).toEqual(
@@ -1446,6 +1444,7 @@ describe('parser', function() {
         }
       );
     });
+
 
     it('should understand multiple expressions', function() {
       expect(createAst('foo = bar; man = shell')).toEqual(
@@ -1551,6 +1550,7 @@ describe('parser', function() {
       );
     });
 
+
     it('should give higher precedence to assignments over filters', function() {
       expect(createAst('foo=bar | man')).toEqual(
         {
@@ -1576,6 +1576,7 @@ describe('parser', function() {
         }
       );
     });
+
 
     it('should accept expression as filters parameters', function() {
       expect(createAst('foo | bar:baz=man')).toEqual(
@@ -1604,6 +1605,7 @@ describe('parser', function() {
       );
     });
 
+
     it('should accept expression as computer members', function() {
       expect(createAst('foo[a = 1]')).toEqual(
         {
@@ -1627,6 +1629,7 @@ describe('parser', function() {
         }
       );
     });
+
 
     it('should accept expression in function arguments', function() {
       expect(createAst('foo(a = 1)')).toEqual(
@@ -1652,6 +1655,7 @@ describe('parser', function() {
         }
       );
     });
+
 
     it('should accept expression as part of ternary operators', function() {
       expect(createAst('foo || bar ? man = 1 : shell = 1')).toEqual(
@@ -1687,6 +1691,7 @@ describe('parser', function() {
       );
     });
 
+
     it('should accept expression as part of array literals', function() {
       expect(createAst('[foo = 1]')).toEqual(
         {
@@ -1710,6 +1715,7 @@ describe('parser', function() {
         }
       );
     });
+
 
     it('should accept expression as part of object literals', function() {
       expect(createAst('{foo: bar = 1}')).toEqual(
@@ -1741,6 +1747,7 @@ describe('parser', function() {
       );
     });
 
+
     it('should be possible to use parenthesis to indicate precedence', function() {
       expect(createAst('(foo + bar).man')).toEqual(
         {
@@ -1764,6 +1771,7 @@ describe('parser', function() {
         }
       );
     });
+
 
     it('should skip empty expressions', function() {
       expect(createAst('foo;;;;bar')).toEqual(
@@ -1813,9 +1821,10 @@ describe('parser', function() {
   }]));
 
   forEach([true, false], function(cspEnabled) {
-    beforeEach(module(['$parseProvider', function(parseProvider) {
-      parseProvider.addLiteral('Infinity', Infinity);
-    }]));
+    beforeEach(module(function($parseProvider) {
+      $parseProvider.addLiteral('Infinity', Infinity);
+      csp().noUnsafeEval = cspEnabled;
+    }));
 
     it('should allow extending literals with csp ' + cspEnabled, inject(function($rootScope) {
       expect($rootScope.$eval("Infinity")).toEqual(Infinity);
@@ -2116,16 +2125,16 @@ describe('parser', function() {
         expect(scope.b).toEqual(234);
       });
 
-        it('should evaluate assignments in ternary operator', function() {
-          scope.$eval('a = 1 ? 2 : 3');
-          expect(scope.a).toBe(2);
+      it('should evaluate assignments in ternary operator', function() {
+        scope.$eval('a = 1 ? 2 : 3');
+        expect(scope.a).toBe(2);
 
-          scope.$eval('0 ? a = 2 : a = 3');
-          expect(scope.a).toBe(3);
+        scope.$eval('0 ? a = 2 : a = 3');
+        expect(scope.a).toBe(3);
 
-          scope.$eval('1 ? a = 2 : a = 3');
-          expect(scope.a).toBe(2);
-        });
+        scope.$eval('1 ? a = 2 : a = 3');
+        expect(scope.a).toBe(2);
+      });
 
       it('should evaluate function call without arguments', function() {
         scope['const'] =  function(a, b) {return 123;};
@@ -2137,6 +2146,15 @@ describe('parser', function() {
           return a + b;
         };
         expect(scope.$eval("add(1,2)")).toEqual(3);
+      });
+
+      it('should allow filter chains as arguments', function() {
+        scope.concat = function(a, b) {
+          return a + b;
+        };
+        scope.begin = 1;
+        scope.limit = 2;
+        expect(scope.$eval("concat('abcd'|limitTo:limit:begin,'abcd'|limitTo:2:1|uppercase)")).toEqual("bcBC");
       });
 
       it('should evaluate function call from a return value', function() {
@@ -2408,7 +2426,6 @@ describe('parser', function() {
             }).toThrowMinErr(
                     '$parse', 'isecfn', 'Referencing Function in Angular expressions is disallowed! ' +
                     'Expression: {}.toString.constructor');
-
           });
 
           it('should not allow access to the Function prototype in the getter', function() {
@@ -2417,7 +2434,6 @@ describe('parser', function() {
             }).toThrowMinErr(
                     '$parse', 'isecfn', 'Referencing Function in Angular expressions is disallowed! ' +
                     'Expression: toString.constructor.prototype');
-
           });
 
           it('should NOT allow access to Function constructor in getter', function() {
@@ -2426,7 +2442,6 @@ describe('parser', function() {
             }).toThrowMinErr(
                     '$parse', 'isecfn', 'Referencing Function in Angular expressions is disallowed! ' +
                     'Expression: {}.toString.constructor("alert(1)")');
-
           });
 
           it('should NOT allow access to Function constructor in setter', function() {
@@ -2927,14 +2942,14 @@ describe('parser', function() {
           });
         });
 
-       it('should prevent the exploit', function() {
-          expect(function() {
-            scope.$eval('(1)[{0: "__proto__", 1: "__proto__", 2: "__proto__", 3: "safe", length: 4, toString: [].pop}].foo = 1');
-          }).toThrow();
-          if (!msie || msie > 10) {
-            expect((1)['__proto__'].foo).toBeUndefined();
-          }
-       });
+        it('should prevent the exploit', function() {
+           expect(function() {
+             scope.$eval('(1)[{0: "__proto__", 1: "__proto__", 2: "__proto__", 3: "safe", length: 4, toString: [].pop}].foo = 1');
+           }).toThrow();
+           if (!msie || msie > 10) {
+             expect((1)['__proto__'].foo).toBeUndefined();
+           }
+        });
 
         it('should prevent the exploit', function() {
           expect(function() {
@@ -3232,6 +3247,18 @@ describe('parser', function() {
           expect(fn()).toEqual(undefined);
         }));
 
+        it('should invoke a stateless filter once when the parsed expression has an interceptor',
+           inject(function($parse, $rootScope) {
+          var countFilter = jasmine.createSpy();
+          var interceptor = jasmine.createSpy();
+          countFilter.and.returnValue(1);
+          $filterProvider.register('count', valueFn(countFilter));
+          $rootScope.foo = function() { return 1; };
+          $rootScope.$watch($parse(':: foo() | count', interceptor));
+          $rootScope.$digest();
+          expect(countFilter.calls.count()).toBe(1);
+        }));
+
         describe('literal expressions', function() {
           it('should mark an empty expressions as literal', inject(function($parse) {
             expect($parse('').literal).toBe(true);
@@ -3316,7 +3343,6 @@ describe('parser', function() {
             expect($rootScope.$$watchers.length).toBe(1);
             expect(log).toEqual([]);
           }));
-
         });
       });
 
@@ -3868,6 +3894,94 @@ describe('parser', function() {
           expect($rootScope.$eval('$locals.bar = 23', locals)).toEqual(23);
           expect(locals.bar).toBe(23);
         }));
+      });
+    });
+  });
+
+  forEach([true, false], function(cspEnabled) {
+    describe('custom identifiers (csp: ' + cspEnabled + ')', function() {
+      var isIdentifierStartRe = /[#a-z]/;
+      var isIdentifierContinueRe = /[\-a-z]/;
+      var isIdentifierStartFn;
+      var isIdentifierContinueFn;
+      var scope;
+
+      beforeEach(module(function($parseProvider) {
+        isIdentifierStartFn = jasmine.
+          createSpy('isIdentifierStart').
+          and.callFake(function(ch, cp) { return isIdentifierStartRe.test(ch); });
+        isIdentifierContinueFn = jasmine.
+          createSpy('isIdentifierContinue').
+          and.callFake(function(ch, cp) { return isIdentifierContinueRe.test(ch); });
+
+        $parseProvider.setIdentifierFns(isIdentifierStartFn, isIdentifierContinueFn);
+        csp().noUnsafeEval = cspEnabled;
+      }));
+
+      beforeEach(inject(function($rootScope) {
+        scope = $rootScope;
+      }));
+
+
+      it('should allow specifying a custom `isIdentifierStart/Continue` functions', function() {
+        scope.x = {};
+
+        scope['#foo'] = 'foo';
+        scope.x['#foo'] = 'foo';
+        expect(scope.$eval('#foo')).toBe('foo');
+        expect(scope.$eval('x.#foo')).toBe('foo');
+
+        scope['bar--'] = 42;
+        scope.x['bar--'] = 42;
+        expect(scope.$eval('bar--')).toBe(42);
+        expect(scope.$eval('x.bar--')).toBe(42);
+        expect(scope['bar--']).toBe(42);
+        expect(scope.x['bar--']).toBe(42);
+
+        scope['#-'] = 'baz';
+        scope.x['#-'] = 'baz';
+        expect(scope.$eval('#-')).toBe('baz');
+        expect(scope.$eval('x.#-')).toBe('baz');
+
+        expect(function() { scope.$eval('##'); }).toThrow();
+        expect(function() { scope.$eval('x.##'); }).toThrow();
+
+        expect(function() { scope.$eval('--'); }).toThrow();
+        expect(function() { scope.$eval('x.--'); }).toThrow();
+      });
+
+
+      it('should pass the character and codepoint to the custom functions', function() {
+        scope.$eval('#-');
+        expect(isIdentifierStartFn).toHaveBeenCalledOnceWith('#', '#'.charCodeAt(0));
+        expect(isIdentifierContinueFn).toHaveBeenCalledOnceWith('-', '-'.charCodeAt(0));
+
+        isIdentifierStartFn.calls.reset();
+        isIdentifierContinueFn.calls.reset();
+
+        scope.$eval('#.foo.#-.bar-');
+        expect(isIdentifierStartFn).toHaveBeenCalledTimes(7);
+        expect(isIdentifierStartFn.calls.allArgs()).toEqual([
+          ['#', '#'.charCodeAt(0)],
+          ['.', '.'.charCodeAt(0)],
+          ['f', 'f'.charCodeAt(0)],
+          ['.', '.'.charCodeAt(0)],
+          ['#', '#'.charCodeAt(0)],
+          ['.', '.'.charCodeAt(0)],
+          ['b', 'b'.charCodeAt(0)]
+        ]);
+        expect(isIdentifierContinueFn).toHaveBeenCalledTimes(9);
+        expect(isIdentifierContinueFn.calls.allArgs()).toEqual([
+          ['.', '.'.charCodeAt(0)],
+          ['o', 'o'.charCodeAt(0)],
+          ['o', 'o'.charCodeAt(0)],
+          ['.', '.'.charCodeAt(0)],
+          ['-', '-'.charCodeAt(0)],
+          ['.', '.'.charCodeAt(0)],
+          ['a', 'a'.charCodeAt(0)],
+          ['r', 'r'.charCodeAt(0)],
+          ['-', '-'.charCodeAt(0)]
+        ]);
       });
     });
   });

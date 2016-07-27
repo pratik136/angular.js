@@ -120,6 +120,47 @@ describe('ngOptions', function() {
             return { pass: errors.length === 0, message: message };
           }
         };
+      },
+      toBeMarkedAsSelected: function() {
+        // Selected is special because the element property and attribute reflect each other's state.
+        // IE9 will wrongly report hasAttribute('selected') === true when the property is
+        // undefined or null, and the dev tools show that no attribute is set
+        return {
+          compare: function(actual) {
+            var errors = [];
+            if (actual.selected === null || typeof actual.selected === 'undefined' || actual.selected === false) {
+              errors.push('Expected option property "selected" to be truthy');
+            }
+
+            if (msie !== 9 && actual.hasAttribute('selected') === false) {
+              errors.push('Expected option to have attribute "selected"');
+            }
+
+            var result = {
+              pass: errors.length === 0,
+              message: errors.join('\n')
+            };
+
+            return result;
+          },
+          negativeCompare: function(actual) {
+            var errors = [];
+            if (actual.selected) {
+              errors.push('Expected option property "selected" to be falsy');
+            }
+
+            if (msie !== 9 && actual.hasAttribute('selected')) {
+              errors.push('Expected option not to have attribute "selected"');
+            }
+
+            var result = {
+              pass: errors.length === 0,
+              message: errors.join('\n')
+            };
+
+            return result;
+          }
+        };
       }
     });
   });
@@ -743,6 +784,41 @@ describe('ngOptions', function() {
     expect(options.eq(3)).toEqualOption('c');
   });
 
+
+  it('should remove the "selected" attribute from the previous option when the model changes', function() {
+    scope.values = [{id: 10, label: 'ten'}, {id:20, label: 'twenty'}];
+
+    createSelect({
+      'ng-model': 'selected',
+      'ng-options': 'item.label for item in values'
+    }, true);
+
+    var options = element.find('option');
+    expect(options[0]).toBeMarkedAsSelected();
+    expect(options[1]).not.toBeMarkedAsSelected();
+    expect(options[2]).not.toBeMarkedAsSelected();
+
+    scope.selected = scope.values[0];
+    scope.$digest();
+
+    expect(options[0]).not.toBeMarkedAsSelected();
+    expect(options[1]).toBeMarkedAsSelected();
+    expect(options[2]).not.toBeMarkedAsSelected();
+
+    scope.selected = scope.values[1];
+    scope.$digest();
+
+    expect(options[0]).not.toBeMarkedAsSelected();
+    expect(options[1]).not.toBeMarkedAsSelected();
+    expect(options[2]).toBeMarkedAsSelected();
+
+    scope.selected = 'no match';
+    scope.$digest();
+
+    expect(options[0]).toBeMarkedAsSelected();
+    expect(options[1]).not.toBeMarkedAsSelected();
+    expect(options[2]).not.toBeMarkedAsSelected();
+  });
 
   describe('disableWhen expression', function() {
 
@@ -1395,6 +1471,26 @@ describe('ngOptions', function() {
         });
       }).not.toThrow();
     });
+
+    it('should remove the "selected" attribute when the model changes', function() {
+      createSelect({
+        'ng-model': 'selected',
+        'ng-options': 'item.label for item in arr track by item.id'
+      });
+
+      var options = element.find('option');
+      browserTrigger(options[2], 'click');
+
+      expect(scope.selected).toEqual(scope.arr[1]);
+
+      scope.selected = {};
+      scope.$digest();
+
+      expect(options[0]).toBeMarkedAsSelected();
+      expect(options[2]).not.toBeMarkedAsSelected();
+      expect(options[2]).not.toBeMarkedAsSelected();
+    });
+
   });
 
 
@@ -1786,6 +1882,87 @@ describe('ngOptions', function() {
       expect(nodeName_(children[3])).toEqual('option');
       expect(nodeName_(children[4])).toEqual('option');
       expect(nodeName_(children[5])).toEqual('option');
+    });
+
+
+    it('should group if the group has a falsy value (except undefined)', function() {
+      createSelect({
+        'ng-model': 'selected',
+        'ng-options': 'item.name group by item.group for item in values'
+      });
+
+      scope.$apply(function() {
+        scope.values = [{name: 'A'},
+                        {name: 'B', group: ''},
+                        {name: 'C', group: null},
+                        {name: 'D', group: false},
+                        {name: 'E', group: 0}];
+        scope.selected = scope.values[0];
+      });
+
+      var optgroups = element.find('optgroup');
+      var options = element.find('option');
+
+      expect(optgroups.length).toEqual(4);
+      expect(options.length).toEqual(5);
+
+      expect(optgroups[0].label).toBe('');
+      expect(optgroups[1].label).toBe('null');
+      expect(optgroups[2].label).toBe('false');
+      expect(optgroups[3].label).toBe('0');
+
+      expect(options[0].textContent).toBe('A');
+      expect(options[0].parentNode).toBe(element[0]);
+
+      expect(options[1].textContent).toBe('B');
+      expect(options[1].parentNode).toBe(optgroups[0]);
+
+      expect(options[2].textContent).toBe('C');
+      expect(options[2].parentNode).toBe(optgroups[1]);
+
+      expect(options[3].textContent).toBe('D');
+      expect(options[3].parentNode).toBe(optgroups[2]);
+
+      expect(options[4].textContent).toBe('E');
+      expect(options[4].parentNode).toBe(optgroups[3]);
+    });
+
+
+    it('should not duplicate a group with a falsy value when the options are updated', function() {
+
+      scope.$apply(function() {
+        scope.values = [{value: 'A', group: ''},
+                        {value: 'B', group: 'First'}];
+        scope.selected = scope.values[0];
+      });
+
+      createSelect({
+        'ng-model': 'selected',
+        'ng-options': 'item.value group by item.group for item in values'
+      });
+
+      scope.$apply(function() {
+        scope.values.push({value: 'C', group: false});
+      });
+
+      var optgroups = element.find('optgroup');
+      var options = element.find('option');
+
+      expect(optgroups.length).toEqual(3);
+      expect(options.length).toEqual(3);
+
+      expect(optgroups[0].label).toBe('');
+      expect(optgroups[1].label).toBe('First');
+      expect(optgroups[2].label).toBe('false');
+
+      expect(options[0].textContent).toBe('A');
+      expect(options[0].parentNode).toBe(optgroups[0]);
+
+      expect(options[1].textContent).toBe('B');
+      expect(options[1].parentNode).toBe(optgroups[1]);
+
+      expect(options[2].textContent).toBe('C');
+      expect(options[2].parentNode).toBe(optgroups[2]);
     });
 
 
@@ -2680,6 +2857,23 @@ describe('ngOptions', function() {
       scope.$apply('required = true');
       expect(element).toBeValid();
       expect(scope.value).toBe(false);
+    });
+  });
+
+  describe('required and empty option', function() {
+
+    it('should select the empty option after compilation', function() {
+      createSelect({
+        'name': 'select',
+        'ng-model': 'value',
+        'ng-options': 'item for item in [\'first\', \'second\', \'third\']',
+        'required': 'required'
+      }, true);
+
+      expect(element.val()).toBe('');
+      var emptyOption = element.find('option').eq(0);
+      expect(emptyOption.prop('selected')).toBe(true);
+      expect(emptyOption.val()).toBe('');
     });
   });
 

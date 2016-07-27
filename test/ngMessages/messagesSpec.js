@@ -12,6 +12,10 @@ describe('ngMessages', function() {
     return str.replace(/\s+/g,'');
   }
 
+  function trim(value) {
+    return isString(value) ? value.trim() : value;
+  }
+
   var element;
   afterEach(function() {
     dealoc(element);
@@ -605,6 +609,34 @@ describe('ngMessages', function() {
     });
   });
 
+
+  it('should clean-up the ngMessage scope when a message is removed',
+    inject(function($compile, $rootScope) {
+
+      var html =
+          '<div ng-messages="items">' +
+            '<div ng-message="a">{{forA}}</div>' +
+          '</div>';
+
+      element = $compile(html)($rootScope);
+      $rootScope.$apply(function() {
+        $rootScope.forA = 'A';
+        $rootScope.items = {a: true};
+      });
+
+      expect(element.text()).toBe('A');
+      var watchers = $rootScope.$countWatchers();
+
+      $rootScope.$apply('items.a = false');
+
+      expect(element.text()).toBe('');
+      // We don't know exactly how many watchers are on the scope, only that there should be
+      // one less now
+      expect($rootScope.$countWatchers()).toBe(watchers - 1);
+    })
+  );
+
+
   describe('when including templates', function() {
     they('should work with a dynamic collection model which is managed by ngRepeat',
       {'<div ng-messages-include="...">': '<div ng-messages="item">' +
@@ -811,7 +843,6 @@ describe('ngMessages', function() {
       expect(trim(element.text())).toEqual("C");
     }));
 
-
     it('should properly detect a previous message, even if it was registered later',
       inject(function($compile, $rootScope, $templateCache) {
         $templateCache.put('include.html', '<div ng-message="a">A</div>');
@@ -842,6 +873,44 @@ describe('ngMessages', function() {
       })
     );
 
+    it('should not throw if scope has been destroyed when template request is ready',
+      inject(function($rootScope, $httpBackend, $compile) {
+        $httpBackend.expectGET('messages.html').respond('<div ng-message="a">A</div>');
+        $rootScope.show = true;
+        var html =
+            '<div ng-if="show">' +
+              '<div ng-messages="items">' +
+                '<div ng-messages-include="messages.html"></div>' +
+              '</div>' +
+            '</div>';
+
+        element = $compile(html)($rootScope);
+        $rootScope.$digest();
+        $rootScope.show = false;
+        $rootScope.$digest();
+        expect(function() {
+          $httpBackend.flush();
+        }).not.toThrow();
+    }));
+
+    it('should not throw if the template is empty',
+      inject(function($compile, $rootScope, $templateCache) {
+        var html =
+            '<div ng-messages="items">' +
+              '<div ng-messages-include="messages1.html"></div>' +
+              '<div ng-messages-include="messages2.html"></div>' +
+            '</div>';
+
+        $templateCache.put('messages1.html', '');
+        $templateCache.put('messages2.html', '   ');
+        element = $compile(html)($rootScope);
+        $rootScope.$digest();
+
+        expect(element.text()).toBe('');
+        expect(element.children().length).toBe(0);
+        expect(element.contents().length).toBe(2);
+      })
+    );
   });
 
   describe('when multiple', function() {
